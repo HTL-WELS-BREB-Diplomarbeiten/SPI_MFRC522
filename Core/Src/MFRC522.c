@@ -21,26 +21,38 @@ static int finishreception = 0;
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef * hspi)
 {
     // TX Done .. Do Something ...
+	if (hspi->Instance == hspi4.Instance) {
+
+	}
 }
 
 void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef * hspi)
 {
     // RX Done .. Do Something ...
 
-	if(hspi->Instance == SPI4){
+	if (hspi->Instance == hspi4.Instance) {
 		finishreception = 1;
 	}
 
 }
 
+static void startSpiTransfer(void) {
+	HAL_GPIO_WritePin(RC522_CS_GPIO_Port, RC522_CS_Pin, GPIO_PIN_RESET);
+}
+
+static void endSpiTransfer(void) {
+	HAL_GPIO_WritePin(RC522_CS_GPIO_Port, RC522_CS_Pin, GPIO_PIN_SET);
+}
+
+
 
 void Write_MFRC522(u_char addr, u_char val) {
-  //uint32_t rx_bits;
-	  u_char addr_bits = (((addr<<1) & 0x7E));
-  //u_char rx_bits;
+  uint8_t data[2];
+  data[0] = (((addr<<1) & 0x7E));
+  data[1] = val;
+
   // set the select line so we can start transferring
-//  MSS_SPI_set_slave_select( &g_mss_spi1, MSS_SPI_SLAVE_0 );
-  HAL_GPIO_WritePin(RC522_CS_GPIO_Port, RC522_CS_Pin, GPIO_PIN_RESET);
+  startSpiTransfer();
   // even though we are calling transfer frame once, we are really sending
   // two 8-bit frames smooshed together-- sending two 8 bit frames back to back
   // results in a spike in the select line which will jack with transactions
@@ -48,17 +60,11 @@ void Write_MFRC522(u_char addr, u_char val) {
   //   1 bit, clear the LSb, and clear the MSb to indicate a write
   // - bottom 8 bits are the data bits being sent for that address, we send
   //   them as is
-//  rx_bits = MSS_SPI_transfer_frame( &g_mss_spi1, (((addr << 1) & 0x7E) << 8) |  val );
-  //HAL_SPI_TransmitReceive(&hspi2, (((addr << 1) & 0x7E) << 8) |  val , rx_bits, 1, 500);
-//  HAL_SPI_Transmit(&hspi4, &addr_bits, 1, 500);
-//  HAL_SPI_Transmit(&hspi4, &val, 1, 500);
 
-  HAL_SPI_Transmit_IT(&hspi4, &addr_bits, 1);
-  HAL_SPI_Transmit_IT(&hspi4, &val, 1);
+  HAL_SPI_Transmit(&hspi4, data, 2, 10);
 
   // clear the select line-- we are done here
-//  MSS_SPI_clear_slave_select( &g_mss_spi1, MSS_SPI_SLAVE_0 );
-  HAL_GPIO_WritePin(RC522_CS_GPIO_Port, RC522_CS_Pin, GPIO_PIN_SET);
+  endSpiTransfer();
 
   // burn some time
   // volatile uint32_t ticks;
@@ -72,13 +78,12 @@ void Write_MFRC522(u_char addr, u_char val) {
  * Returns: a byte of data read from the
  */
 u_char Read_MFRC522(u_char addr) {
-  //uint32_t rx_bits;
-  u_char rx_bits;
-  u_char addr_bits = (((addr<<1) & 0x7E) | 0x80);
+  uint8_t txData[2], rxData[2];
+  txData[0] = (((addr<<1) & 0x7E) | 0x80);
+  txData[1] = 0;
 
   // set the select line so we can start transferring
-//  MSS_SPI_set_slave_select( &g_mss_spi1, MSS_SPI_SLAVE_0 );
-  HAL_GPIO_WritePin(RC522_CS_GPIO_Port, RC522_CS_Pin, GPIO_PIN_RESET);
+  startSpiTransfer();
 
   // even though we are calling transfer frame once, we are really sending
   // two 8-bit frames smooshed together-- sending two 8 bit frames back to back
@@ -86,35 +91,16 @@ u_char Read_MFRC522(u_char addr) {
   // - top 8 bits are the address. Per the spec, we shift the address left
   //   1 bit, clear the LSb, and set the MSb to indicate a read
   // - bottom 8 bits are all 0s on a read per 8.1.2.1 Table 6
-//  rx_bits = MSS_SPI_transfer_frame( &g_mss_spi1, ((((addr << 1) & 0x7E) | 0x80) << 8) | 0x00 );
-  //HAL_SPI_TransmitReceive(&hspi2, ((((addr << 1) & 0x7E) | 0x80) << 8) | 0x00 , rx_bits, 1, 500);
-//HAL_SPI_Transmit(&hspi2, (unsigned char*) ((((addr<<1) & 0x7E) | 0x80)), 1, 500);
 
-//  HAL_SPI_Transmit(&hspi4, &addr_bits, 1, 500);
+  HAL_SPI_TransmitReceive(&hspi4, txData, rxData, 2, 20);
 
-  HAL_SPI_Transmit_IT(&hspi4, &addr_bits, 1);
+  endSpiTransfer();
 
-//  HAL_SPI_Receive(&hspi4, &rx_bits, 1, 500);
-
-//
-//  HAL_SPI_Transmit_IT(&hspi4, &addr_bits, 1);
-  finishreception = 0;
-  HAL_SPI_Receive_IT(&hspi4, &rx_bits, 1);
-  while(!finishreception){}
-
-  // clear the select line-- we are done here
-//  MSS_SPI_clear_slave_select( &g_mss_spi1, MSS_SPI_SLAVE_0 );
-
-  // burn some time
-  // volatile uint32_t ticks;
-  // for(ticks=0; ticks < 5000; ++ticks);
-  HAL_GPIO_WritePin(RC522_CS_GPIO_Port, RC522_CS_Pin, GPIO_PIN_SET);
-
-	return (u_char) rx_bits; // return the rx bits, casting to an 8 bit int and chopping off the upper 24 bits
+  return rxData[1];
 }
 //--------------------------------------------------------
 /*
- * Function Nameï¼šSetBitMask
+ * Function Name: SetBitMask
  * Description: Set RC522 register bit
  * Input parameters: reg - register address; mask - set value
  * Return value: None
@@ -141,7 +127,7 @@ void ClearBitMask(u_char reg, u_char mask)
 
 //-----------------------------------------------
 /*
- * Function Nameï¼šAntennaOn
+ * Function Name: AntennaOn
  * Description: Open antennas, each time you start or shut down the natural barrier between the transmitter should be at least 1ms interval
  * Input: None
  * Return value: None
@@ -176,7 +162,7 @@ void MFRC522_Reset(void)
 }
 //--------------------------------------------------
 /*
- * Function Nameï¼šInitMFRC522
+ * Function Name: InitMFRC522
  * Description: Initialize RC522
  * Input: None
  * Return value: None
@@ -203,7 +189,7 @@ void MFRC522_Init(void)
 }
 //------------------------------------------------------------------
 /*
- * Function Nameï¼šMFRC522_Request
+ * Function Name: MFRC522_Request
  * Description: Find cards, read the card type number
  * Input parameters: reqMode - find cards way
  *   TagType - Return Card Type
@@ -586,7 +572,6 @@ u_char MFRC522_SelectTag(u_char *serNum)
  */
 void MFRC522_Halt(void)
 {
-  u_char status;
   uint unLen;
   u_char buff[4];
 
@@ -594,7 +579,7 @@ void MFRC522_Halt(void)
   buff[1] = 0;
   CalulateCRC(buff, 2, &buff[2]);
 
-  status = MFRC522_ToCard(PCD_TRANSCEIVE, buff, 4, buff,&unLen);
+  MFRC522_ToCard(PCD_TRANSCEIVE, buff, 4, buff,&unLen);
   //return status;
 }
 //--------------------------------------
