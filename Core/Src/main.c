@@ -329,7 +329,7 @@ static void MX_SPI4_Init(void)
   }
   /* USER CODE BEGIN SPI4_Init 2 */
 
-  HAL_NVIC_EnableIRQ(SPI4_IRQn);
+  //HAL_NVIC_EnableIRQ(SPI4_IRQn);
   /* USER CODE END SPI4_Init 2 */
 
 }
