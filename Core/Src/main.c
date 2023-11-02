@@ -290,6 +290,7 @@ static void MX_SPI1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN SPI1_Init 2 */
+  HAL_NVIC_EnableIRQ(SPI4_IRQn);
 
   /* USER CODE END SPI1_Init 2 */
 
@@ -378,6 +379,10 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+
+
+
 
 
 /* USER CODE END 4 */

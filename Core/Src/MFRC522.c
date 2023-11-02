@@ -39,15 +39,23 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef * hspi)
 	}
 }
 
-void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef * hspi)
-{
-    // RX Done .. Do Something ...
 
+//void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef * hspi)
+//{
+//    // RX Done .. Do Something ...
+//
+//}
+
+
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef * hspi)
+{
 	if (hspi->Instance == hspi4.Instance) {
 		finishreception = 1;
 	}
-
 }
+
+
+
 
 static void startSpiTransfer(void) {
 	HAL_GPIO_WritePin(RC522_CS_GPIO_Port, RC522_CS_Pin, GPIO_PIN_RESET);
@@ -74,7 +82,7 @@ void Write_MFRC522(u_char addr, u_char val) {
   // - bottom 8 bits are the data bits being sent for that address, we send
   //   them as is
 
-  HAL_SPI_Transmit(&hspi4, data, 2, 10);
+  HAL_SPI_Transmit_IT(&hspi4, data, 2);
 
   // clear the select line-- we are done here
   endSpiTransfer();
@@ -106,6 +114,7 @@ u_char Read_MFRC522(u_char addr) {
   // - bottom 8 bits are all 0s on a read per 8.1.2.1 Table 6
 
   HAL_SPI_TransmitReceive(&hspi4, txData, rxData, 2, 20);
+
 
   endSpiTransfer();
 
@@ -372,6 +381,7 @@ u_char MFRC522_ToCard_NonBlock(u_char command, u_char *sendData, u_char sendLen,
 	static u_char waitIRq = 0x00;
 	static uint rxStartTick = 0;
 
+
 	switch (state)
 	{
 	case Init:
@@ -381,11 +391,11 @@ u_char MFRC522_ToCard_NonBlock(u_char command, u_char *sendData, u_char sendLen,
 		if (command == PCD_AUTHENT) {
 			irqEn = 0x12;
 			waitIRq = 0x10;
+			break;
 		}
 		else if (command == PCD_TRANSCEIVE) {  // Transmit FIFO data
 			irqEn = 0x77;
 			waitIRq = 0x30;
-			break;
 		}
 		if (irqEn != 0) {
 
@@ -421,7 +431,7 @@ u_char MFRC522_ToCard_NonBlock(u_char command, u_char *sendData, u_char sendLen,
 		// CommIrqReg[7..0]
 		// Set1 TxIRq RxIRq IdleIRq HiAlerIRq LoAlertIRq ErrIRq TimerIRq
 		u_char n = Read_MFRC522(CommIrqReg);
-		if ((HAL_GetTick() - rxStartTick > 25)) {
+		if ((HAL_GetTick() - rxStartTick) > 1000) {
 			state = Init;
 			status = MI_ERR;
 		} else if ((n&0x01) || (n&waitIRq)) {
@@ -483,6 +493,8 @@ u_char MFRC522_ToCard_NonBlock(u_char command, u_char *sendData, u_char sendLen,
 		status = MI_ERR;
 		state = Init;
 	}
+
+
 	return status;
 }
 
