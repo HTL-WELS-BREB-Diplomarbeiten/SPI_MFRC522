@@ -6,6 +6,19 @@
 #include "MFRC522.h"
 
 
+typedef enum {
+	Init,
+	WaitRx,
+	Read
+} ToCardStates_t;
+
+typedef enum {
+	DetectStart,
+	Detect,
+	ReadSerialStart,
+	ReadSerial
+} ReadCardStates_t;
+
 
 extern SPI_HandleTypeDef hspi4;
 //------------------------------------------------------
@@ -338,6 +351,219 @@ u_char MFRC522_ToCard(u_char command, u_char *sendData, u_char sendLen, u_char *
   return status;
 }
 
+
+//-----------------------------------------------
+/*
+ * Function Name: MFRC522_ToCard_NonBlock
+ * Description: RC522 and ISO14443 card communication
+ * Input Parameters: command - MF522 command word,
+ *			 sendData--RC522 sent to the card by the data
+ *			 sendLen--Length of data sent
+ *			 backData--Received the card returns data,
+ *			 backLen--Return data bit length
+ * Return value: MI_OK if data has been received successfully, MI_BUSY if
+ * 		communication is in progress, on error MI_ERR
+ */
+u_char MFRC522_ToCard_NonBlock(u_char command, u_char *sendData, u_char sendLen, u_char *backData, uint *backLen)
+{
+	static ToCardStates_t state = Init;
+	u_char status = MI_ERR;
+	static u_char irqEn = 0x00;
+	static u_char waitIRq = 0x00;
+	static uint rxStartTick = 0;
+
+	switch (state)
+	{
+	case Init:
+	{
+		irqEn = 0;
+		waitIRq = 0;
+		if (command == PCD_AUTHENT) {
+			irqEn = 0x12;
+			waitIRq = 0x10;
+		}
+		else if (command == PCD_TRANSCEIVE) {  // Transmit FIFO data
+			irqEn = 0x77;
+			waitIRq = 0x30;
+			break;
+		}
+		if (irqEn != 0) {
+
+			Write_MFRC522(CommIEnReg, irqEn|0x80);  // Interrupt request
+			ClearBitMask(CommIrqReg, 0x80);         // Clear all interrupt request bit
+			SetBitMask(FIFOLevelReg, 0x80);         // FlushBuffer=1, FIFO Initialization
+
+			Write_MFRC522(CommandReg, PCD_IDLE);    // NO action; Cancel the current command
+
+			// Writing data to the FIFO
+			for (int i=0; i<sendLen; i++)
+			{
+				Write_MFRC522(FIFODataReg, sendData[i]);
+			}
+
+			// Execute the command
+			Write_MFRC522(CommandReg, command);
+			if (command == PCD_TRANSCEIVE)
+			{
+				SetBitMask(BitFramingReg, 0x80);      // StartSend=1,transmission of data starts
+			}
+
+			state = WaitRx;
+			rxStartTick = HAL_GetTick();
+			status = MI_BUSY;
+		}
+		break;
+	}
+	case WaitRx:
+	{
+		// Waiting to receive data to complete
+		// the operator M1 card maximum waiting time 25ms
+		// CommIrqReg[7..0]
+		// Set1 TxIRq RxIRq IdleIRq HiAlerIRq LoAlertIRq ErrIRq TimerIRq
+		u_char n = Read_MFRC522(CommIrqReg);
+		if ((HAL_GetTick() - rxStartTick > 25)) {
+			state = Init;
+			status = MI_ERR;
+		} else if ((n&0x01) || (n&waitIRq)) {
+			if (n & irqEn & 0x01)
+			{
+				status = MI_NOTAGERR;             // ??
+				state = Init;
+			} else {
+				state = Read;
+				status = MI_BUSY;
+			}
+		}
+
+		break;
+	}
+	case Read:
+	{
+		ClearBitMask(BitFramingReg, 0x80);      // StartSend=0
+		if(!(Read_MFRC522(ErrorReg) & 0x1B))  // BufferOvfl Collerr CRCErr ProtecolErr
+		{
+			status = MI_OK;
+			state = Init;
+
+			if (command == PCD_TRANSCEIVE)
+			{
+				u_char n = Read_MFRC522(FIFOLevelReg);
+				u_char lastBits = Read_MFRC522(ControlReg) & 0x07;
+				if (lastBits)
+				{
+					*backLen = (n-1)*8 + lastBits;
+				}
+				else
+				{
+					*backLen = n*8;
+				}
+
+				if (n == 0)
+				{
+					n = 1;
+				}
+				if (n > MAX_LEN)
+				{
+					n = MAX_LEN;
+				}
+
+				// Reading the received data in FIFO
+				for (int i=0; i<n; i++)
+				{
+					backData[i] = Read_MFRC522(FIFODataReg);
+				}
+			}
+
+		} else {
+			status = MI_ERR;
+			state = Init;
+		}
+	}
+	default:
+		status = MI_ERR;
+		state = Init;
+	}
+	return status;
+}
+
+//------------------------------------------------------------------
+/*
+ * Function Name: MFRC522_FindCardNonBlock
+ * Description: Find cards, return serial number
+ * Input parameters: serNum - returns 4 bytes card serial number, the first 5 bytes for the checksum byte
+ * Return value: the successful return MI_OK, if operation is in progress: MI_BUSY,
+ * 			on error: MI_ERR
+ */
+u_char MFRC522_FindCardNonBlock(u_char *serNum)
+{
+  static ReadCardStates_t state = DetectStart;
+  u_char status = MI_ERR;
+
+  switch (state) {
+  case DetectStart:
+  {
+	  Write_MFRC522(BitFramingReg, 0x07);   // TxLastBists = BitFramingReg[2..0]
+	  state = Detect;
+	  status = MI_BUSY;
+
+	  break;
+  }
+  case Detect:
+  {
+	  uint backBits; // The received data bits
+	  u_char data[2];
+	  data[0] = PICC_REQIDL;
+
+	  status = MFRC522_ToCard_NonBlock(PCD_TRANSCEIVE, data, 1, data, &backBits);
+	  if ((status == MI_OK) && (backBits != 0x10)) {
+	    status = MI_ERR;
+	    state = DetectStart;
+	  } else if (status == MI_OK) {
+		  state = ReadSerialStart;
+		  status = MI_BUSY;
+	  }
+
+	  break;
+  }
+  case ReadSerialStart:
+  {
+	  Write_MFRC522(BitFramingReg, 0x00);		//TxLastBists = BitFramingReg[2..0]
+
+	  state = ReadSerial;
+	  status = MI_BUSY;
+	  break;
+  }
+  case ReadSerial:
+  {
+	  serNum[0] = PICC_ANTICOLL;
+	  serNum[1] = 0x20;
+	  uint unLen;
+	  status = MFRC522_ToCard_NonBlock(PCD_TRANSCEIVE, serNum, 2, serNum, &unLen);
+
+	  if (status == MI_OK)
+	  {
+	    //Check card serial number
+		u_char serNumCheck = 0;
+		int i;
+	    for (i=0; i<4; i++)
+	    {
+	      serNumCheck ^= serNum[i];
+	    }
+	    if (serNumCheck != serNum[i])
+	    {
+	      status = MI_ERR;
+	    }
+	  }
+
+	  break;
+  }
+  default:
+	  state = DetectStart;
+	  state = MI_ERR;
+  }
+
+  return status;
+}
 
 //---------------------------------------------------------------
 

@@ -131,17 +131,16 @@ int main(void)
 	while (1)
 	{
 
-		for (int i = 0; i < 16; i++) {
-			cardstr[i] = 0;									//set back read card number
-		}
+//		status = MFRC522_Request(PICC_REQIDL, cardstr);		//functions of library
+//		status = MFRC522_Anticoll(cardstr);
+		status = MFRC522_FindCardNonBlock(cardstr);
 
-
-		status = MFRC522_Request(PICC_REQIDL, cardstr);		//functions of library
-		status = MFRC522_Anticoll(cardstr);
 
 		if(status == MI_OK){									//when card number is aviable
 			memcpy(UID, cardstr, 5);							//Copy it into UID array (is 5 big)
 			cardhere = 1;										//now card is here
+			//set back read card number
+			memset(cardstr, 0, MAX_LEN);
 
 			if(!defineaccescard){
 				if((UID[0] == accesscardUID[0]) && (UID[1] == accesscardUID[1]) && (UID[2] == accesscardUID[2]) && (UID[3] == accesscardUID[3]) && (UID[4] == accesscardUID[4])){	//See if a specific Card UID is read

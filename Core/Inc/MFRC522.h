@@ -37,6 +37,7 @@
 #define MI_OK                 0
 #define MI_NOTAGERR           1
 #define MI_ERR                2
+#define MI_BUSY				  3
 
 #define uint unsigned int
 #define u_char unsigned char
@@ -131,6 +132,8 @@ u_char MFRC522_Read(u_char, u_char*);
 u_char MFRC522_Write(u_char, u_char*);
 void MFRC522_Halt();
 void MFRC522_StopCrypto1(void);
+
+u_char MFRC522_FindCardNonBlock(u_char *serNum);
 
 
 #endif /* MFRC522_H_ */
