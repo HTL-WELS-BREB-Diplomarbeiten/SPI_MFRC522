@@ -156,7 +156,7 @@ int main(void)
 
 		if(cardhere){											//for better visualizing
 			cardherecnt++;									//let a timer run
-			if(cardherecnt >= 100){							//and after 5s reset UID (Card Number)
+			if(cardherecnt >= 2000){							//and after 5s reset UID (Card Number)
 				UID[0] = 0;
 				UID[1] = 0;
 				UID[2] = 0;
@@ -188,14 +188,14 @@ int main(void)
 
 		if(defineaccescard){
 			defineaccescardtimer++;
-			if(defineaccescardtimer >= 100){
+			if(defineaccescardtimer >= 2000){
 				defineaccescard = 0;
 				defineaccescardtimer = 0;
 			}
 		}
 
 
-		HAL_Delay(50);
+		HAL_Delay(1);
 
     /* USER CODE END WHILE */
 

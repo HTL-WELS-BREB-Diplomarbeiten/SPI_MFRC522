@@ -566,6 +566,7 @@ u_char MFRC522_FindCardNonBlock(u_char *serNum)
 	    {
 	      status = MI_ERR;
 	    }
+	    state = DetectStart;
 	  }
 
 	  break;
