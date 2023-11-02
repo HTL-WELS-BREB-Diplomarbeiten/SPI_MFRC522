@@ -488,6 +488,7 @@ u_char MFRC522_ToCard_NonBlock(u_char command, u_char *sendData, u_char sendLen,
 			status = MI_ERR;
 			state = Init;
 		}
+		break;
 	}
 	default:
 		status = MI_ERR;
